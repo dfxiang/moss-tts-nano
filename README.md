@@ -6,6 +6,51 @@
 
 默认音色是**台湾腔**（`zh_taiwan`）。
 
+## 与上游 MOSS-TTS-Nano 的区别
+
+当前仓库不是重新训练的模型，也不是上游仓库的镜像；它复用相同的 MOSS-TTS-Nano 模型权重，
+重点把模型整理成可直接部署和调用的 TTS 服务。
+
+| 方面 | 上游原项目 | 当前项目 |
+| --- | --- | --- |
+| 定位 | 模型推理、本地 Demo、CLI 与微调工具 | 面向上线调用的 OpenAI 兼容 TTS 服务 |
+| 客户端接入 | `infer.py`、`app.py`、`app_onnx.py` 等入口 | 统一的 `/v1/audio/speech` HTTP API，可直接使用官方 OpenAI SDK |
+| 推理后端 | 按脚本选择 PyTorch 或 ONNX | 同一套 API 和环境变量切换 native / ONNX，并提供 CPU / CUDA 镜像 |
+| 音色 | 以参考音频和演示音色为主 | 13 个稳定音色 id、OpenAI 别名、上传克隆和挂载目录音色 |
+| 流式能力 | 模型侧流式推理 | 原生 PCM、OpenAI SSE、断线取消和安全释放推理资源 |
+| 中英混排 | 提供 robust normalizer 与中英文 WeTextProcessing | 在统一请求层执行同一套预处理，保证普通与流式请求进入 native / ONNX 前行为一致 |
+
+简而言之，上游项目回答“如何运行模型”，当前项目回答“如何把模型稳定地接入现有文本和语音应用”。
+
+### 中英文混排处理
+
+当前项目默认启用中英文混排预处理，链路位于模型生成之前：
+
+1. 先做结构清洗。URL、邮箱、`@mention`、`#hashtag`、文件名、路径和版本号会先被保护，
+   避免其中的点、下划线、斜杠被当成普通标点清坏。
+2. 按文本内容选择 TN 分支。只要包含汉字，就使用中文 TN；纯拉丁字母文本使用英文 TN。
+   因此 `这是Anthropic的npm包` 会走中文分支，同时保留其中英文品牌和产品名。
+3. 在汉字与拉丁 token 之间补一个空格，例如 `今天update到v2.3.1了` 会变成
+   `今天 update 到 v2.3.1 了。`。连续英文空格会被压缩，汉字之间多余的空格会被删除。
+4. 再做一次结构清洗和分段。中文与 ASCII 的句号、问号、感叹号、分号、逗号都可作为
+   长文本分段边界；常见 Markdown、社交噪声和重复标点也会被转为适合 TTS 的停顿。
+5. 普通语音接口和流式接口共用这一预处理；ONNX 后端不会再做第二次语义 TN，确保中英混排
+   文本在两条推理路径上的处理一致。
+
+可用下面的命令核对混排规则（包含 46 个清洗、保真与幂等性用例）：
+
+```bash
+python vendor/upstream/tts_robust_normalizer_single_script.py
+```
+
+这些优化改善的是文本清洗、中英文边界、技术 token 保真和长文本分段，不会在中英文之间
+逐词切换音色，也不会改变模型权重。品牌名、缩写、生僻专有名词的实际发音仍取决于模型；
+确需固定读法时，建议直接改写输入，或选择更合适的参考音色。
+
+混排能力的基础实现来自 vendored 的上游运行时；本仓库的价值在于把它统一接入所有 API
+与推理后端，而不是声称一套独立训练的混排模型。默认同时启用两级清洗，也可以用
+`TTS_ENABLE_TEXT_NORMALIZATION=0` 或 `TTS_ENABLE_NORMALIZE_TTS_TEXT=0` 分别关闭。
+
 ## 特性
 
 - **OpenAI 兼容接口**：`POST /v1/audio/speech`，支持 `response_format` = `mp3` / `opus` / `aac` / `flac` / `wav` / `pcm`，支持 `speed` 变速和 `stream_format="sse"` 流式事件；官方 `openai` SDK 只需改 `base_url` 即可直接用。
@@ -299,10 +344,12 @@ Dockerfile / Dockerfile.gpu / docker-compose.yml / requirements*.txt
 
 ```bash
 python tests/api_smoke.py --base-url http://localhost:8000
+python vendor/upstream/tts_robust_normalizer_single_script.py
 ```
 
 覆盖健康检查、模型列表、音色列表、各输出格式、SSE 流式、PCM 流式、音色克隆与错误处理。
-未安装 ffmpeg 时会自动跳过依赖 ffmpeg 的用例并给出提示。
+第一条命令覆盖服务接口；第二条覆盖文本清洗的中英文混排、技术 token 保真和幂等性。
+未安装 ffmpeg 时，接口自检会自动跳过依赖 ffmpeg 的用例并给出提示。
 
 ## 关于 CPU / CUDA 依赖
 
