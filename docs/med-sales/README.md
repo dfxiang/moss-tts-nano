@@ -14,7 +14,7 @@
 > 当前 Release 包未签名，安装时需允许应用安装未知来源；正式分发请使用自己的证书签名。
 > 构建与安全说明见 [Android 客户端](android/README.md)。
 
-> 文档镜像同步自 [dfxiang/med-sales@62ad9dd](https://github.com/dfxiang/med-sales/commit/62ad9dd)；
+> 文档镜像同步自 [dfxiang/med-sales@b67336c](https://github.com/dfxiang/med-sales/commit/b67336c)；
 > 本目录保留原项目的文档层级，源码与最新版本仍以源仓库为准。
 
 面向**药品、疫苗、医疗器械销售公司**的销售业务管理系统，覆盖客户、商品、采购、销售、库存、退货、
