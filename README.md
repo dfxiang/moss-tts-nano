@@ -1,507 +1,425 @@
-# MOSS-TTS-Nano
+# MOSS-TTS-Nano · OpenAI 兼容 TTS 服务（CPU / CUDA）
 
-<br>
+把 [OpenMOSS/MOSS-TTS-Nano](https://github.com/OpenMOSS/MOSS-TTS-Nano) 封装成一个
+**兼容 OpenAI `/v1/audio/speech` 的 TTS 服务**，外加一个简单网页界面。
+提供纯 CPU 和 CUDA GPU 两套 Docker 镜像；GPU 镜像的 PyTorch、CUDA 运行库和模型权重都已内置。
 
-<p align="center">
-  <img src="./assets/images/OpenMOSS_Logo.svg" height="70" align="middle" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="./assets/images/mosi-logo.png" height="50" align="middle" />
-</p>
+默认音色是**台湾腔**（`zh_taiwan`）。
 
-<div align="center">
-  <a href="https://trendshift.io/repositories/25891?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-25891" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/25891/weekly?language=Python" alt="OpenMOSS%2FMOSS-TTS-Nano | Trendshift" width="250" height="55"/></a>
-</div>
+## 特性
 
-<div align="center">
-  <a href="https://clawhub.ai/luogao2333/moss-tts-voice"><img src="https://img.shields.io/badge/🦞_OpenClaw-Skills-8A2BE2" alt="OpenClaw"></a>
-  <a href="https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano"><img src="https://img.shields.io/badge/Huggingface-Models-orange?logo=huggingface&amp"></a>
-  <a href="https://modelscope.cn/models/openmoss/MOSS-TTS-Nano"><img src="https://img.shields.io/badge/ModelScope-Models-7B61FF?logo=modelscope&amp;logoColor=white"></a>
-  <a href="https://openmoss.github.io/MOSS-TTS-Nano-Demo/"><img src="https://img.shields.io/badge/Blog-View-blue?logo=internet-explorer&amp"></a>
-  <a href="https://arxiv.org/abs/2603.18090"><img src="https://img.shields.io/badge/Arxiv-2603.18090-red?logo=arxiv&amp"></a>
+- **OpenAI 兼容接口**：`POST /v1/audio/speech`，支持 `response_format` = `mp3` / `opus` / `aac` / `flac` / `wav` / `pcm`，支持 `speed` 变速和 `stream_format="sse"` 流式事件；官方 `openai` SDK 只需改 `base_url` 即可直接用。
+- **低延迟流式合成**：`POST /v1/audio/speech/stream` 边生成边返回 16bit PCM，网页端边收边播（4 核 CPU 实测首包 0.6~0.9 秒）。客户端可随时中断，服务会立刻释放推理资源，不会阻塞后续请求。
+- **13 个内置音色**：中文（台湾腔、京味、温柔女声、讲座男声…）、英文、日文；OpenAI 音色名（`nova`、`alloy`、`onyx`…）会自动映射到内置音色，未知音色回退默认音色，客户端不会因为音色名报错。
+- **音色克隆**：`POST /v1/audio/speech/clone` 上传参考音频即可用自定义音色合成。
+- **CPU / CUDA 容器**：`Dockerfile` 使用 PyTorch CPU；`Dockerfile.gpu` 基于 `moss-tts-nano:base`，使用官方 ONNX Runtime CUDA 后端。两者都在构建阶段把模型权重放进镜像，容器启动后无需联网。
+- **简单网页界面**：`GET /`，流式播放、语速与采样参数、示例文本、调用代码片段，全部离线自包含（不依赖 CDN）。
 
-  <a href="https://studio.mosi.cn/experiments/moss-tts-nano"><img src="https://img.shields.io/badge/AIStudio-Try-green?logo=internet-explorer&amp"></a>
-  <a href="https://studio.mosi.cn/docs/moss-tts-nano"><img src="https://img.shields.io/badge/API-Docs-00A3FF?logo=fastapi&amp"></a>
-  <a href="https://x.com/Open_MOSS"><img src="https://img.shields.io/badge/Twitter-Follow-black?logo=x&amp"></a>
-  <a href="https://discord.gg/Xf3aXddCjc"><img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&amp"></a>
-  <a href="./assets/images/wechat.jpg"><img src="https://img.shields.io/badge/WeChat-Join-07C160?logo=wechat&amp;logoColor=white" alt="WeChat"></a>
-</div>
+## 快速开始
 
-[English](README.md) | [简体中文](README_zh.md)
-
-
-
-MOSS-TTS-Nano is an open-source **multilingual tiny speech generation model** from [MOSI.AI](https://mosi.cn/#hero) and the [OpenMOSS team](https://www.open-moss.com/). With only **0.1B parameters**, it is designed for **realtime speech generation**, can run directly on **CPU without a GPU**, and keeps the deployment stack simple enough for local demos, web serving, and lightweight product integration.
-
-**Start here:** [Try the demo](https://huggingface.co/spaces/OpenMOSS-Team/MOSS-TTS-Nano) · [Run locally](#quickstart) · [ONNX CPU inference](#onnx-cpu-inference) · [Model weights](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano) · [Fine-tuning](finetuning/README.md)
-
-[demo_video.mp4](https://github.com/user-attachments/assets/25aca215-0bd7-4d0c-be95-8d1f6737aec8)
-
-## News
-
-* 2026.5.6: **MOSS-TTS**, **MOSS-TTS-Nano**, and **MOSS-Audio-Tokenizer** now support [**mlx-audio**](https://github.com/Blaizzy/mlx-audio). Visit the [mlx-audio GitHub repository](https://github.com/Blaizzy/mlx-audio) for details.
-* 2026.4.29: MOSS-TTS 2.0 is coming soon! We are collecting TTS feedback, suggestions, and feature requests via the [requirements collection form](https://acnc6zeentra.feishu.cn/share/base/form/shrcnyAe1LwqKWjCSuW4wiZ2Hef).
-* 2026.4.27: We added updated evaluation results for [**MOSS-Audio-Tokenizer-Nano**](#moss-audio-tokenizer-nano), including reconstruction quality comparisons on speech, audio, and music benchmarks.
-
-<details>
-<summary>Earlier updates</summary>
-
-* 2026.4.17: We are excited to release a more efficient and fully standalone [**ONNX CPU Version**](#onnx-cpu-version), backed by the Hugging Face repositories [**MOSS-TTS-Nano-100M-ONNX**](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX) and [**MOSS-Audio-Tokenizer-Nano-ONNX**](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX). It preserves the full voice cloning workflow while removing the PyTorch dependency during inference. In our tests, it delivers nearly **2x** the processing efficiency of the original version, and runs smoothly on a **single CPU core** on a **MacBook Air M4**. Built on top of this ONNX CPU version, we have also updated [**MOSS-TTS-Nano-Reader**](https://github.com/OpenMOSS/MOSS-TTS-Nano-Reader), which can now run the model directly inside the browser as an extension, without requiring a separate local inference service.
-* 2026.4.16: We release the **MOSS-TTS-Nano finetuning code**. See [./finetuning/README.md](./finetuning/README.md) for training and usage details.
-* 2026.4.14: We release [**MOSS-TTS-Nano-Reader**](https://github.com/OpenMOSS/MOSS-TTS-Nano-Reader), a local browser reading application built on top of **MOSS-TTS-Nano**.
-* 2026.4.10: We release **MOSS-TTS-Nano**. A demo Space is available at [OpenMOSS-Team/MOSS-TTS-Nano](https://huggingface.co/spaces/OpenMOSS-Team/MOSS-TTS-Nano). You can also view the demo and more details at [openmoss.github.io/MOSS-TTS-Nano-Demo/](https://openmoss.github.io/MOSS-TTS-Nano-Demo/).
-
-</details>
-
-## Demo
-
-- Online Demo: [https://openmoss.github.io/MOSS-TTS-Nano-Demo/](https://openmoss.github.io/MOSS-TTS-Nano-Demo/)
-- Hugging Face Space: [OpenMOSS-Team/MOSS-TTS-Nano](https://huggingface.co/spaces/OpenMOSS-Team/MOSS-TTS-Nano)
-
-## Contents
-
-- [MOSS-TTS-Nano](#moss-tts-nano)
-  - [News](#news)
-  - [Demo](#demo)
-  - [Contents](#contents)
-  - [Introduction](#introduction)
-    - [Main Features](#main-features)
-  - [Supported Languages](#supported-languages)
-  - [Quickstart](#quickstart)
-    - [Environment Setup](#environment-setup)
-      - [Using Conda](#using-conda)
-    - [Voice Clone with `infer.py`](#voice-clone-with-inferpy)
-    - [Local Web Demo with `app.py`](#local-web-demo-with-apppy)
-    - [ONNX CPU Inference](#onnx-cpu-inference)
-    - [ONNX Local Web Demo with `app_onnx.py`](#onnx-local-web-demo-with-app_onnxpy)
-    - [Android ONNX Runtime Example](#android-onnx-runtime-example)
-    - [Export TTS-only ONNX Weights](#export-tts-only-onnx-weights)
-    - [CLI Command: `moss-tts-nano generate`](#cli-command-moss-tts-nano-generate)
-    - [CLI Command: `moss-tts-nano serve`](#cli-command-moss-tts-nano-serve)
-    - [Finetuning](#finetuning)
-  - [MOSS-Audio-Tokenizer-Nano](#moss-audio-tokenizer-nano)
-    - [Introduction](#introduction-1)
-    - [Model Weights](#model-weights)
-    - [Evaluation Metrics](#evaluation-metrics)
-    - [LibriSpeech Speech Metrics (MOSS-Audio-Tokenizer-Nano vs. Open-source Tokenizers)](#librispeech-speech-metrics-moss-audio-tokenizer-nano-vs-open-source-tokenizers)
-  - [MOSS-TTS Family](#moss-tts-family)
-    - [Introduction](#introduction-2)
-    - [Released Models](#released-models)
-  - [License](#license)
-  - [Citation](#citation)
-  - [Star History](#star-history)
-
-## Introduction
-
-<p align="center">
-  <img src="./assets/images/concept.png" alt="MOSS-TTS-Nano concept" width="85%" />
-</p>
-
-MOSS-TTS-Nano focuses on the part of TTS deployment that matters most in practice: **small footprint**, **low latency**, **good enough quality for realtime products**, and **simple local setup**. It uses a pure autoregressive **Audio Tokenizer + LLM** pipeline and keeps the inference workflow friendly for both terminal users and web-demo users.
-
-### Main Features
-
-- **Tiny model size**: only **0.1B parameters**
-- **Native audio format**: **48 kHz**, **2-channel** output
-- **Multilingual**: supports **Chinese, English, and more**
-- **Pure autoregressive architecture**: built on **Audio Tokenizer + LLM**
-- **Streaming inference**: low realtime latency and fast first audio
-- **CPU friendly**: streaming generation can run on a **4-core CPU**
-- **Long-text capable**: supports long input with automatic chunked voice cloning
-- **Open-source deployment**: direct `python infer.py`, `python app.py`, and packaged CLI support
-
-<p align="center">
-  <img src="./assets/images/arch_moss_tts_nano.png" alt="MOSS-TTS-Nano architecture" width="80%" />
-  <br />
-  Architecture of MOSS-TTS-Nano
-</p>
-
-## Supported Languages
-
-MOSS-TTS-Nano currently supports **20 languages**:
-
-| Language | Code | Flag | Language | Code | Flag | Language | Code | Flag |
-|---|---|---|---|---|---|---|---|---|
-| Chinese | zh | 🇨🇳 | English | en | 🇺🇸 | German | de | 🇩🇪 |
-| Spanish | es | 🇪🇸 | French | fr | 🇫🇷 | Japanese | ja | 🇯🇵 |
-| Italian | it | 🇮🇹 | Hungarian | hu | 🇭🇺 | Korean | ko | 🇰🇷 |
-| Russian | ru | 🇷🇺 | Persian (Farsi) | fa | 🇮🇷 | Arabic | ar | 🇸🇦 |
-| Polish | pl | 🇵🇱 | Portuguese | pt | 🇵🇹 | Czech | cs | 🇨🇿 |
-| Danish | da | 🇩🇰 | Swedish | sv | 🇸🇪 | Greek | el | 🇬🇷 |
-| Turkish | tr | 🇹🇷 |  |  |  |  |  |  |
-
-## Quickstart
-
-### Environment Setup
-
-We recommend a clean Python environment first, then installing the project in editable mode so the `moss-tts-nano` command becomes available locally.
-The examples below intentionally keep arguments minimal and rely on the repository defaults.
-By default, the code loads `OpenMOSS-Team/MOSS-TTS-Nano` and `OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano`.
-
-#### Using Conda
+### 方式一：Docker Compose（推荐）
 
 ```bash
-conda create -n moss-tts-nano python=3.12 -y
-conda activate moss-tts-nano
+docker compose up -d --build
+# 打开 http://localhost:8000
+```
 
-git clone https://github.com/OpenMOSS/MOSS-TTS-Nano.git
-cd MOSS-TTS-Nano
+宿主机 8000 端口被占用时可以换端口：`TTS_PUBLISH_PORT=8080 docker compose up -d`。
 
+### 方式二：docker 命令
+
+```bash
+docker build -t moss-tts-nano:latest .
+docker run --rm -p 8000:8000 --cpus=4 moss-tts-nano:latest
+# 打开 http://localhost:8000
+```
+
+镜像里已经预置了模型权重，**不需要挂载 HuggingFace 缓存**，也不需要在启动时联网。
+
+首次启动会后台预热（加载权重 + 跑一次短合成 + 编译文本正则化），本机 4 核实测约 9 秒；
+期间 `/health` 返回 `"status": "warming_up"`，合成请求会自动等待预热完成而不是失败。
+
+```bash
+curl -s localhost:8000/health | python -m json.tool
+```
+
+### 方式三：CUDA GPU 镜像
+
+宿主机需要 NVIDIA 驱动和 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)。
+先确认 Docker 能看到 GPU：
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.6.3-base-ubuntu24.04 nvidia-smi
+```
+
+构建并启动 GPU 镜像：
+
+```bash
+docker build -f Dockerfile.gpu -t moss-tts-nano:gpu .
+docker run --rm --gpus all -p 8000:8000 moss-tts-nano:gpu
+# 打开 http://localhost:8000
+```
+
+`moss-tts-nano:base` 是已经构建好并验证可运行的完整 GPU 环境，包含 Python 依赖、
+CUDA 运行库、ffmpeg 和基础模型。`Dockerfile.gpu` 只覆盖当前版本的
+`app/`、`vendor/` 和 `tools/`；首次构建会安装 `onnxruntime-gpu` 并下载官方 ONNX
+模型，之后相同层会复用缓存。
+
+镜像默认使用 `TTS_BACKEND=onnx`、`TTS_ONNX_EXECUTION_PROVIDER=cuda`，
+推理走 ONNX Runtime 的 `CUDAExecutionProvider`，并使用官方 ONNX 模型内置的
+`fixed` 采样节点，不经过 PyTorch-CUDA 生成路径。
+可以这样确认容器确实运行在 GPU 上：
+
+```bash
+curl -s localhost:8000/health | python -m json.tool
+# device 应为 "cuda"
+```
+
+GPU 镜像继承基础镜像的体积；新增层包含应用代码、ONNX Runtime GPU 和
+约 760MB 的官方 ONNX 模型。相同构建层会被 Docker 缓存。
+
+### 方式四：本地直接运行
+
+```bash
+sudo apt-get install -y ffmpeg            # mp3/aac/opus/flac 与变速需要 ffmpeg
+python -m venv .venv && source .venv/bin/activate
+
+# 关键：用 PyTorch 官方 CPU 索引装 torch，避免拉入 CUDA 包
+pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.0 torchaudio==2.7.0
 pip install -r requirements.txt
-pip install -e .
+
+python -m app.main                        # 默认监听 0.0.0.0:8000
 ```
 
-If `WeTextProcessing` or `pynini` fails to install from `requirements.txt`, install `pynini` first in the same environment, then install `WeTextProcessing`, remove `WeTextProcessing` from `requirements.txt`, and finally rerun `pip install -r requirements.txt`.
+权重默认从 HuggingFace 拉取（`OpenMOSS-Team/MOSS-TTS-Nano-100M`、`OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano`）；
+也可以先执行 `python tools/download_models.py` 预下载到 `/opt/models`（用 `TTS_MODEL_LINK_DIR` 改目录），
+服务检测到本地快照后会自动使用。
 
-With Conda, we recommend:
+## 接口
+
+### 1) `POST /v1/audio/speech`（OpenAI 兼容）
+
+| 字段 | 类型 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| `model` | string | `moss-tts-nano` | 也接受 `tts-1` / `tts-1-hd` / `gpt-4o-mini-tts` 等别名 |
+| `input` | string | 必填 | 待合成文本（上限见 `TTS_MAX_INPUT_CHARS`，默认 8192 字符） |
+| `voice` | string | `zh_taiwan` | 内置音色 id 或别名；未知值回退默认音色 |
+| `response_format` | string | `mp3` | `mp3` / `opus` / `aac` / `flac` / `wav` / `pcm` |
+| `speed` | number | `1.0` | 0.25~4.0，用 ffmpeg `atempo` 实现变速不变调 |
+| `stream_format` | string | `audio` | 设为 `sse` 时返回 OpenAI 风格的 `speech.audio.delta` 事件流 |
+
+扩展字段（可选）：`seed`、`prompt_text`、`max_new_frames`、`voice_clone_max_text_tokens`、
+`do_sample`、`text_temperature`、`text_top_p`、`text_top_k`、`audio_temperature`、`audio_top_p`、
+`audio_top_k`、`audio_repetition_penalty`。未知字段会被忽略，方便客户端携带私有参数。
+
+> 官方 `openai` SDK 会校验参数名，扩展字段需要通过 `extra_body` 传入，例如
+> `client.audio.speech.create(..., extra_body={"seed": 42})`。
 
 ```bash
-conda install -c conda-forge pynini=2.1.6.post1 -y
-pip install git+https://github.com/WhizZest/WeTextProcessing.git
-pip install -r requirements.txt
+curl -X POST http://localhost:8000/v1/audio/speech \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"tts-1","input":"你好，欢迎使用 MOSS-TTS-Nano。","voice":"zh_taiwan","response_format":"mp3"}' \
+  --output hello.mp3
 ```
 
-If you are not using Conda, make sure you download a `pynini` wheel that matches your Python version and platform before installing `WeTextProcessing`. For a community-tested example, see [Issue #6](https://github.com/OpenMOSS/MOSS-TTS-Nano/issues/6).
+```python
+from openai import OpenAI
 
-### Voice Clone with `infer.py`
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="not-needed")
 
-This repository keeps the direct Python entrypoint for local inference. The example below uses **voice clone mode**, which is the main recommended workflow for MOSS-TTS-Nano.
+with client.audio.speech.with_streaming_response.create(
+    model="moss-tts-nano",
+    voice="zh_taiwan",
+    input="你好，欢迎使用 MOSS-TTS-Nano。",
+    response_format="mp3",
+) as response:
+    response.stream_to_file("hello.mp3")
+```
+
+响应头（便于排查性能）：`X-Voice`、`X-Sample-Rate`、`X-Channels`、`X-Audio-Seconds`、
+`X-Elapsed-Ms`、`X-Text-Normalization`。
+
+### 2) `POST /v1/audio/speech/stream`（扩展：低延迟流式）
+
+请求体同上，响应为 `application/octet-stream` 的裸 PCM（16bit little-endian，交错声道），
+采样率与声道数在响应头 `X-Sample-Rate`、`X-Channels` 里。适合边生成边播放。
+
+```python
+import numpy as np, requests, soundfile as sf
+
+resp = requests.post(
+    "http://localhost:8000/v1/audio/speech/stream",
+    json={"input": "边生成边播放。", "voice": "zh_taiwan"},
+    stream=True,
+)
+sample_rate = int(resp.headers["X-Sample-Rate"])
+channels = int(resp.headers["X-Channels"])
+pcm = b"".join(resp.iter_content(chunk_size=8192))
+data = np.frombuffer(pcm, dtype="<i2").astype("float32") / 32768.0
+sf.write("stream.wav", data.reshape(-1, channels), sample_rate)
+```
+
+### 3) `POST /v1/audio/speech/clone`（扩展：音色克隆）
+
+`multipart/form-data`：`input`（文本）、`prompt_audio`（参考音频文件），
+可选 `prompt_text`、`response_format`、`speed`、`seed`、`max_new_frames`。
+参考音频建议 3~30 秒清晰人声。
 
 ```bash
-python infer.py \
-  --prompt-audio-path assets/audio/zh_1.wav \
-  --text "欢迎关注模思智能、上海创智学院与复旦大学自然语言处理实验室。"
+curl -X POST http://localhost:8000/v1/audio/speech/clone \
+  -F 'input=用这个音色念一句话' \
+  -F 'response_format=wav' \
+  -F 'prompt_audio=@my_voice.wav' \
+  --output clone.wav
 ```
 
-This writes audio to `generated_audio/infer_output.wav` by default.
+#### 免上传：把参考音频挂进容器，按文件名调用
 
-### Local Web Demo with `app.py`
-
-You can launch the local FastAPI demo for browser-based testing:
+每次请求都上传参考音频（几十秒的 mp3 约几百 KB）没必要，可以把宿主机目录只读挂载进容器：
+启动时扫描一次，目录里的 `abc.mp3` 会登记成音色 `abc`，之后直接当普通音色用。
 
 ```bash
-python app.py
+cp abc.mp3 /home/danny/tts-voices/         # compose 默认把该目录挂到容器 /voices（只读）
+docker compose up -d                       # 首次、或改了挂载配置时需要重建容器
+
+curl -s localhost:8000/v1/audio/voices | python -m json.tool | grep -A3 '"source": "mounted"'
+curl -X POST http://localhost:8000/v1/audio/speech \
+  -H 'Content-Type: application/json' \
+  -d '{"input":"用 abc 这个音色念一句话。","voice":"abc","response_format":"wav"}' \
+  --output abc.wav
 ```
 
-Then open `http://127.0.0.1:18083` in your browser.
+几点说明：
 
-<a id="onnx-cpu-version"></a>
+- 挂载路径由 compose 的 `TTS_VOICE_DIR_HOST` 决定（默认 `/home/danny/tts-voices`），容器内固定是 `/voices`，可用 `TTS_VOICE_DIR` 改容器内路径（镜像默认已是 `/voices`）。
+- 音色 id 就是文件名去掉扩展名（小写、空白转 `-`）：`My Voice.mp3` → `my-voice`；也接受带扩展名的写法（`my-voice.mp3`）。
+- 支持 `wav` / `flac` / `mp3` / `ogg` / `opus` / `aif` / `caf` / `au`（底层 libsndfile 后端）；`m4a`、`aac` 需要先转码。
+- 只扫顶层文件，忽略子目录、隐藏文件和非音频扩展名；与内置音色 id/别名重名的文件会被跳过并在启动日志里告警（内置音色优先）。
+- 扫描只登记路径，不预加载音频：挂很多文件也不增加启动耗时和内存。音频在每次请求时读取，所以替换宿主机上的文件下一个请求就生效。
+- `GET /health` 的 `mounted_voices` 字段能看到挂载目录状态和已登记的音色（启动日志里也会打印一行）。
+- 未知音色名仍然按 OpenAI 兼容行为回退到默认音色（不会报错），可以用响应头 `X-Voice` 确认真实生效的音色。
+- 参考音频越长，每次合成的固定开销越大（服务端每次都要重新编码参考音频）：实测 1 秒参考约 2.6 秒、25 秒参考约 6.2 秒（同一句文本、4 核 CPU）。建议控制在 3~8 秒。
 
-### ONNX CPU Inference
+### 4) 其它接口
 
-We now strongly recommend trying the **ONNX CPU version** first for lightweight local deployment and CPU inference.
+| 接口 | 说明 |
+| --- | --- |
+| `GET /v1/audio/voices` | 音色目录（id、名称、语言、说明、示例文本、OpenAI 别名、默认音色） |
+| `GET /v1/models` | OpenAI 风格模型列表 |
+| `GET /health` | 存活与预热状态、设备/线程数/采样率、请求统计、ffmpeg 是否可用 |
+| `GET /` | 网页界面 |
 
-This version is designed to be more deployment-friendly while keeping the same core MOSS-TTS-Nano experience:
+错误返回统一为 OpenAI 风格：`{"error": {"message": ..., "type": ..., "code": null, "param": null}}`。
 
-- **No PyTorch dependency during inference**: it runs directly on ONNX Runtime CPU.
-- **Fully standalone CPU deployment**: suitable for local demos, services, and lightweight integration.
-- **Feature-complete voice cloning workflow**: supports direct reference audio input, built-in voices, and `Realtime Streaming Decode`.
-- **Faster in practice**: in our tests, processing efficiency is nearly **2x** that of the original version.
-- **Strong single-core usability**: on a **MacBook Air M4**, we observed smooth inference with only **1 CPU core**.
+## 内置音色
 
-The ONNX entrypoints are `infer_onnx.py`, `app_onnx.py`, and the packaged CLI with `--backend onnx`.
+| id | 名称 | 语言 | 说明 |
+| --- | --- | --- | --- |
+| `zh_taiwan` ★ | 台湾腔 | 中文 | 台湾口音女声，语气自然松弛（**默认音色**） |
+| `zh_welcome` | 欢迎关注模思智能 | 中文 | 男声，播音感 |
+| `zh_beijing` | 京味胡同闲聊 | 中文 | 北京口音闲谈 |
+| `zh_night` | 深夜温柔晚安 | 中文 | 温柔女声，长文朗读 |
+| `zh_lecture` | 讲座/纪录片旁白 | 中文 | 男声旁白 |
+| `zh_yangmi` | 女性独白（杨幂风格） | 中文 | 女性独白 / 文案 |
+| `en_welcome` | Welcome to OpenMOSS | 英文 | 介绍性语气 |
+| `en_bitter_lesson` | The Bitter Lesson | 英文 | 讲稿 / 论文朗读 |
+| `en_news` | English News | 英文 | 新闻播报 |
+| `en_gentle` | A Gentle Reminder | 英文 | 平静温柔 |
+| `en_taylor` | Taylor Swift Style | 英文 | 舞台感演讲 |
+| `en_quiet_motion` | The Quiet Motion of the World | 英文 | 纪录片旁白 |
+| `ja_news` | ニュース | 日文 | 日语新闻 |
 
-By default, all ONNX commands use `--execution-provider cpu`, so existing commands keep the same CPU behavior. If you have an NVIDIA GPU and a compatible `onnxruntime-gpu` installation, you can opt in to CUDA with `--execution-provider cuda`.
+别名映射：`nova` / `shimmer` → `zh_taiwan`，`onyx` → `zh_lecture`，`coral` → `zh_yangmi`，
+`alloy` / `ash` → `en_bitter_lesson`，`echo` → `en_news`，`fable` / `sage` → `en_gentle`，
+`verse` → `en_welcome`，`ballad` → `en_quiet_motion`。
 
-To prepare a CUDA ONNX Runtime environment, replace the CPU ONNX Runtime wheel with the GPU wheel:
+## 配置（环境变量）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `TTS_HOST` / `TTS_PORT` | `0.0.0.0` / `8000` | 监听地址与端口 |
+| `TTS_DEVICE` | `cpu` | 推理设备；`Dockerfile.gpu` 默认设为 `cuda`，也可设为 `auto` |
+| `TTS_DTYPE` | `float32` | `float32` / `float16` / `bfloat16` / `auto`；GPU 镜像默认 `float32` |
+| `TTS_ATTN_IMPLEMENTATION` | `eager` | CPU / GPU 镜像默认 `eager`；GPU 可尝试 `sdpa` |
+| `TTS_BACKEND` | `native` | `native`（PyTorch）或 `onnx`；GPU 镜像默认 `onnx` |
+| `TTS_ONNX_MODEL_DIR` | `/opt/onnx_models` | ONNX 模型目录 |
+| `TTS_ONNX_EXECUTION_PROVIDER` | `cpu` | ONNX Execution Provider；GPU 镜像默认 `cuda` |
+| `TTS_CPU_THREADS` | 0（自动） | torch 线程数，默认取容器可用核数 |
+| `TTS_MAX_CONCURRENCY` | `1` | 同时合成数；CPU 上并发会互相抢核，建议保持 1 |
+| `TTS_MAX_INPUT_CHARS` | `8192` | 单次请求文本长度上限 |
+| `TTS_DEFAULT_VOICE` | `zh_taiwan` | 默认音色 |
+| `TTS_VOICE_DIR` | 镜像内为 `/voices`，裸跑为空 | 挂载的参考音频目录：里面的音频按文件名登记成音色，免上传（空值关闭） |
+| `TTS_DEFAULT_RESPONSE_FORMAT` | `mp3` | `response_format` 缺省值 |
+| `TTS_API_KEY` | 空（不鉴权） | 设置后所有 `/v1/*` 需要 `Authorization: Bearer <key>` |
+| `TTS_CORS_ORIGINS` | `*` | 允许的跨域来源，逗号分隔 |
+| `TTS_WARMUP` | `1` | 启动时是否跑一次预热合成（`0` 表示只加载权重） |
+| `TTS_ENABLE_TEXT_NORMALIZATION` | `1` | 是否用 WeTextProcessing 做数字/日期等正则化 |
+| `TTS_CHECKPOINT_PATH` | HF repo id 或 `/opt/models/MOSS-TTS-Nano` | 模型路径 / 仓库 |
+| `TTS_AUDIO_TOKENIZER_PATH` | HF repo id 或 `/opt/models/MOSS-Audio-Tokenizer-Nano` | 音频 tokenizer 路径 / 仓库 |
+| `TTS_HF_OFFLINE` | `1` | 本地缓存已含模型时自动离线（避免联网探测卡顿）；设为 `0` 关闭 |
+| `TTS_FFMPEG_BIN` | `ffmpeg` | ffmpeg 可执行文件路径 |
+| `TTS_OUTPUT_DIR` | `/tmp/moss-tts-nano` | 运行时临时音频目录 |
+
+## 性能参考
+
+4 核 CPU（`TTS_CPU_THREADS=4`）、台湾腔、48kHz 立体声输出：
+
+| 场景 | 实测 |
+| --- | --- |
+| 整段合成 `/v1/audio/speech` | 5.8s 音频耗时 4.9s（RTF ≈ 0.85） |
+| 流式 `/v1/audio/speech/stream` | 首包 ≈ 0.6~0.9s，之后基本实时 |
+| 容器冷启动（权重在镜像里） | 约 9s 完成预热，`/health` 转为 `ready` |
+
+RTF = 生成耗时 / 音频时长，越小越快。核数越多越快；长文本会按标点自动分段合成。
+输出为模型原生的 48kHz 立体声。镜像大小约 3.9GB（主要是 PyTorch CPU 与模型权重）。
+
+## 项目结构
+
+```
+app/
+  main.py         FastAPI 服务与全部接口
+  engine.py       对上游运行时的封装（预热、串行推理、流式、统计）
+  voices.py       音色目录与别名映射
+  audio.py        PCM/WAV/MP3/Opus/AAC/FLAC 编码与变速（ffmpeg）
+  config.py       环境变量配置
+  web/index.html  网页界面（单文件、无外部依赖）
+tests/api_smoke.py    接口自检脚本
+tools/
+  download_models.py  预下载模型权重
+  download_onnx_models.py  预下载官方 ONNX 模型
+  sync_upstream.sh    同步上游 vendored 代码
+vendor/upstream/      上游运行时代码 + 参考音频（Apache-2.0，见 NOTICE.md）
+Dockerfile / Dockerfile.gpu / docker-compose.yml / requirements*.txt
+```
+
+数据流：文本 →（robust 清洗 + WeTextProcessing 正则化）→ 按标点分段 →
+以参考音频做 voice clone 生成音频 token → 解码为 48kHz 波形 → PCM 流式输出或 ffmpeg 编码。
+
+## 自检
 
 ```bash
-pip uninstall -y onnxruntime
-pip install "onnxruntime-gpu>=1.20.0"
+python tests/api_smoke.py --base-url http://localhost:8000
 ```
 
-If `--model-dir` is omitted, the script automatically checks `./models`. When the model files are missing, it downloads them on first run from:
+覆盖健康检查、模型列表、音色列表、各输出格式、SSE 流式、PCM 流式、音色克隆与错误处理。
+未安装 ffmpeg 时会自动跳过依赖 ffmpeg 的用例并给出提示。
 
-- [OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Nano-100M-ONNX)
-- [OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX)
+## 关于 CPU / CUDA 依赖
 
-Downloaded files are stored under:
+- Dockerfile 只用 PyTorch 官方 CPU 索引安装 `torch==2.7.0+cpu` / `torchaudio==2.7.0+cpu`，
+  并且**不会**执行上游 `pyproject.toml` / `requirements.txt` 里的 `torch==2.7.0`（那会从 PyPI 拉到 CUDA 版）。
+- Dockerfile.gpu 基于 `moss-tts-nano:base`，使用官方 `onnx_tts_runtime.py` /
+  `ort_cpu_runtime.py` 和 `onnxruntime-gpu`；GPU 生成路径不再使用 PyTorch CUDA。
+- 上游运行时代码以 vendored 方式放在 `vendor/upstream/`，不额外引入依赖。
+- 验证镜像里没有 CUDA 包：
 
-- `models/MOSS-TTS-Nano-100M-ONNX`
-- `models/MOSS-Audio-Tokenizer-Nano-ONNX`
+  ```bash
+  docker run --rm moss-tts-nano:latest pip list | grep -iE "nvidia|triton" || echo "无 CUDA 相关包"
+  ```
 
-Example:
+- 验证 GPU 镜像能看到显卡并加载了 CUDA 版 PyTorch：
+
+  ```bash
+  docker run --rm --gpus all moss-tts-nano:gpu \
+    python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+  ```
+
+## 常见问题
+
+**mp3 报 500，提示需要 ffmpeg？**
+镜像里已包含 ffmpeg。本地裸跑请先 `apt-get install -y ffmpeg`；
+或者只用 `response_format=wav` / `pcm`（不需要 ffmpeg），此时 `speed` 必须为 1.0。
+
+**构建时下载模型失败（网络受限）**
+镜像默认走国内镜像站 `https://hf-mirror.com`（仅构建阶段生效）。
+
+如果日志出现 `Distant resource does not seem to be on huggingface.co`，通常是因为使用了
+已改名的旧仓库 ID。当前主模型仓库是 `OpenMOSS-Team/MOSS-TTS-Nano-100M`；
+本项目会使用新 ID 下载，并自动重试 3 次。
+
+若仍失败，可换其他镜像站，或改走宿主网络：
 
 ```bash
-python infer_onnx.py \
-  --prompt-audio-path assets/audio/zh_1.wav \
-  --text "Welcome to the ONNX Runtime CPU demo."
+# 覆盖为其他镜像站，或设回 https://huggingface.co 直连官方站
+docker build --build-arg HF_ENDPOINT=https://hf-mirror.com -t moss-tts-nano:latest .
+# 或：docker build --network=host -t moss-tts-nano:latest .
 ```
 
-Optional CUDA execution:
+**`apt` 或 `pip` 下载依赖失败（网络受限）**
+CPU Dockerfile 默认使用阿里云 Debian 和 PyPI 镜像。
+GPU Dockerfile 复用 `moss-tts-nano:base`，不执行 `apt-get`；首次构建会从阿里云
+PyPI 安装 `onnxruntime-gpu`，并从 `HF_ENDPOINT` 下载官方 ONNX 模型。
+
+**想用挂载缓存代替镜像内置权重（镜像小约 600MB）**
+
+构建时跳过下载，运行时把本机缓存挂进来即可。服务会「离线优先」使用本地缓存，
+不会卡在 huggingface_hub 的联网探测上：
 
 ```bash
-python infer_onnx.py \
-  --execution-provider cuda \
-  --prompt-audio-path assets/audio/zh_1.wav \
-  --text "Welcome to the ONNX Runtime CUDA demo."
+docker build --build-arg PRELOAD_MODELS=0 -t moss-tts-nano:slim .
+docker run --rm -p 8000:8000 \
+  -v ~/.cache/huggingface:/opt/huggingface \
+  -e TTS_CHECKPOINT_PATH=OpenMOSS-Team/MOSS-TTS-Nano-100M \
+  -e TTS_AUDIO_TOKENIZER_PATH=OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano \
+  moss-tts-nano:slim
 ```
 
-CUDA execution requires `onnxruntime-gpu`. 
-
-If you already have the ONNX assets in another directory, pass it explicitly:
-
-```bash
-python infer_onnx.py \
-  --model-dir /path/to/models \
-  --prompt-audio-path assets/audio/zh_1.wav \
-  --text "Welcome to the ONNX Runtime CPU demo."
-```
-
-### ONNX Local Web Demo with `app_onnx.py`
-
-You can also launch the ONNX-backed local web demo:
-
-```bash
-python app_onnx.py
-```
-
-To run the ONNX web demo with CUDA, start it with:
-
-```bash
-python app_onnx.py \
-  --execution-provider cuda
-```
-
-Then open `http://127.0.0.1:18083` in your browser.
-
-The first startup may spend extra time downloading assets if `models/` does not contain the ONNX weights yet.
-
-### Android ONNX Runtime Example
-
-An Android ONNX Runtime smoke example is available under [`examples/android_onnx_runtime`](./examples/android_onnx_runtime).
-
-The example loads the exported MOSS-TTS-Nano ONNX graphs and the MOSS-Audio-Tokenizer-Nano ONNX decoder on device, synthesizes short pre-tokenized demo prompts, and writes a WAV file from Android. It is intentionally minimal and keeps model files outside the APK for local testing.
-
-### Export TTS-only ONNX Weights
-
-If you retrain `MOSS-TTS-Nano`, you need to re-export the TTS-side ONNX weights. The exporter under [`onnx/`](./onnx) takes a local Hugging Face-format `MOSS-TTS-Nano` checkpoint and outputs a TTS-only ONNX model directory.
-
-Example:
-
-```bash
-python onnx/export_hf_to_tts_onnx.py \
-  --checkpoint-path /path/to/MOSS-TTS-Nano \
-  --output-dir /path/to/MOSS-TTS-Nano-100M-ONNX
-```
-
-The output directory contains:
-
-- `moss_tts_prefill.onnx`
-- `moss_tts_decode_step.onnx`
-- `moss_tts_local_decoder.onnx`
-- `moss_tts_local_cached_step.onnx`
-- `moss_tts_local_fixed_sampled_frame.onnx`
-- `moss_tts_global_shared.data`
-- `moss_tts_local_shared.data`
-- `tts_browser_onnx_meta.json`
-- `tokenizer.model`
-
-This is intended for the ONNX deployment path only. Existing prompt audio codes produced by `MOSS-Audio-Tokenizer-Nano` do not need to be regenerated when the audio tokenizer stays fixed.
-
-### CLI Command: `moss-tts-nano generate`
-
-After `pip install -e .`, you can call the packaged CLI directly:
-
-```bash
-moss-tts-nano generate \
-  --prompt-speech assets/audio/zh_1.wav \
-  --text "欢迎关注模思智能、上海创智学院与复旦大学自然语言处理实验室。"
-```
-
-For the ONNX CPU backend, add `--backend onnx`:
-
-```bash
-moss-tts-nano generate \
-  --backend onnx \
-  --prompt-speech assets/audio/zh_1.wav \
-  --text "欢迎关注模思智能、上海创智学院与复旦大学自然语言处理实验室。"
-```
-
-To opt in to CUDA:
-
-```bash
-moss-tts-nano generate \
-  --backend onnx \
-  --execution-provider cuda \
-  --prompt-speech assets/audio/zh_1.wav \
-  --text "欢迎关注模思智能、上海创智学院与复旦大学自然语言处理实验室。"
-```
-
-Useful notes:
-
-- `moss-tts-nano generate` writes to `generated_audio/moss_tts_nano_output.wav` by default.
-- `--prompt-speech` is the friendly alias for the reference audio path used by voice cloning.
-- `--text-file` is supported for long-form synthesis.
-- ONNX CUDA execution requires `onnxruntime-gpu`; without `--execution-provider cuda`, ONNX inference remains CPU-only.
-
-### CLI Command: `moss-tts-nano serve`
-
-You can also launch the web demo through the packaged CLI:
-
-```bash
-moss-tts-nano serve
-```
-
-For the ONNX web demo:
-
-```bash
-moss-tts-nano serve \
-  --backend onnx
-```
-
-For the ONNX web demo with CUDA:
-
-```bash
-moss-tts-nano serve \
-  --backend onnx \
-  --execution-provider cuda
-```
-
-This command forwards to the corresponding web app, keeps the model loaded in memory, and serves the local browser demo plus HTTP generation endpoints.
-
-For server deployment with paged KV cache, streaming, and an OpenAI-compatible `/v1/audio/speech` endpoint, please read the [vLLM-Omni MOSS-TTS-Nano README](https://github.com/vllm-project/vllm-omni/blob/main/examples/online_serving/moss_tts_nano/README.md).
-
-### Finetuning
-
-Finetuning tutorials are already provided.
-
-See [./finetuning/README.md](./finetuning/README.md) for details.
-
-## MOSS-Audio-Tokenizer-Nano
-
-<a id="mat-intro"></a>
-### Introduction
-**MOSS-Audio-Tokenizer** is the unified discrete audio interface for the entire MOSS-TTS family. It is built on the **Cat** (**C**ausal **A**udio **T**okenizer with **T**ransformer) architecture, a CNN-free audio tokenizer composed entirely of causal Transformer blocks. It serves as the shared audio backbone for MOSS-TTS, MOSS-TTS-Nano, MOSS-TTSD, MOSS-VoiceGenerator, MOSS-SoundEffect, and MOSS-TTS-Realtime, providing a consistent audio representation across the full product family.
-
-To further improve perceptual quality while reducing inference cost, we trained **MOSS-Audio-Tokenizer-Nano**, a lightweight tokenizer with approximately **20 million parameters** designed for high-fidelity audio compression. It supports **48 kHz** input and output as well as **stereo audio**, which helps reduce compression loss and improve listening quality. It can compress **48 kHz stereo audio** into a **12.5 Hz** token stream and uses **RVQ with 16 codebooks**, enabling high-fidelity reconstruction across variable bitrates from **0.125 kbps to 2 kbps**.
-
-
-To learn more about setup, advanced usage, and evaluation metrics, please visit the [MOSS-Audio-Tokenizer Repository](https://github.com/OpenMOSS/MOSS-Audio-Tokenizer).
-
-<p align="center">
-  <img src="./assets/images/arch_moss_audio_tokenizer_nano.png" alt="MOSS-Audio-Tokenizer-Nano architecture" width="100%" />
-  Architecture of MOSS-Audio-Tokenizer-Nano
-</p>
-
-### Model Weights
-
-| Model | Hugging Face | ModelScope |
-|:-----:|:------------:|:----------:|
-| **MOSS-Audio-Tokenizer-Nano** | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-Audio-Tokenizer-Nano) |
-
-
-### Evaluation Metrics
-
-The table below compares the reconstruction quality of MOSS-Audio-Tokenizer-Nano with open-source audio tokenizers with **no more than 120M parameters** on speech, audio, and music data. As shown in the table and figure, MOSS-Audio-Tokenizer-Nano achieves the best overall reconstruction quality while remaining one of the smallest models in the comparison.
-
-- Speech metrics are evaluated on LibriSpeech test-clean (English) and AISHELL-2 (Chinese), reported as EN/ZH.
-- Audio metrics are evaluated on the AudioSet evaluation subset, while music metrics are evaluated on MUSDB, reported as audio/music.
-- STFT-Dist. denotes the STFT distance.
-- Higher is better for speech metrics, while lower is better for audio/music metrics (Mel-Loss, STFT-Dist.).
-- Ch. denotes the number of input/output channels supported by the audio tokenizer: `ch=1` means mono audio, and `ch=2` means stereo audio.
-- Nvq denotes the number of quantizers.
-
-<br>
-<p align="center">
-    <img src="assets/images/evaluation_table_moss_audio_tokenizer_nano.png" width="100%"> <br>
-    Reconstruction quality comparison of open-source audio tokenizers on speech and audio/music data.
-</p>
-<br>
-
-### LibriSpeech Speech Metrics (MOSS-Audio-Tokenizer-Nano vs. Open-source Tokenizers)
-
-The plots below compare MOSS-Audio-Tokenizer-Nano with other open-source audio tokenizers and codecs with **no more than 120M parameters** on the LibriSpeech dataset. The models are evaluated with SIM, STOI, PESQ-NB, and PESQ-WB, where higher values indicate better reconstruction quality.
-For the same model, we control the bitrate by adjusting the number of RVQ codebooks used during inference.
-
-<br>
-<p align="center">
-    <img src="assets/images/evaluation_fig_moss_audio_tokenizer.png" width="100%"> <br>
-    LibriSpeech reconstruction quality comparison across different bitrates.
-</p>
-<br>
-
-
-<a id="moss-tts"></a>
-## MOSS-TTS Family
-
-### Introduction
-
-<p align="center">
-  <img src="./assets/images/moss_tts_family.jpeg" width="85%" />
-</p>
-
-MOSS‑TTS Family is an open‑source **speech and sound generation model family** from [MOSI.AI](https://mosi.cn/#hero) and the [OpenMOSS team](https://www.open-moss.com/). It is designed for **high‑fidelity**, **high‑expressiveness**, and **complex real‑world scenarios**, covering stable long‑form speech, multi‑speaker dialogue, voice/character design, environmental sound effects, and real‑time streaming TTS.
-
-The family currently includes:
-
-- **MOSS-TTS**: the flagship model for **high-fidelity zero-shot voice cloning**, **long-speech generation**, **fine-grained control over Pinyin, phonemes, and duration**, and **multilingual/code-switched synthesis**.
-- **MOSS-TTS-Local-Transformer**: a smaller model in the family based on `MossTTSLocal`, designed to keep the MOSS-TTS style of speech generation in a lighter model size.
-- **MOSS-TTSD-v1.0**: a spoken dialogue generation model for **expressive**, **multi-speaker**, and **ultra-long** dialogue audio.
-- **MOSS-VoiceGenerator**: a voice design model that can generate diverse voices and speaking styles directly from **text prompts**, without reference speech.
-- **MOSS-SoundEffect**: a controllable sound generation model for natural ambience, city scenes, animals, human actions, and short music-like audio fragments.
-- **MOSS-TTS-Realtime**: a realtime speech model for low-latency voice agents, designed to keep replies natural, coherent, and voice-consistent across turns.
-
-
-
-### Released Models
-
-| Model | Architecture | Size | Hugging Face | ModelScope |
-|---|---|---:|---|---|
-| **MOSS-TTS** | `MossTTSDelay` | 8B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-TTS) |
-| **MOSS-TTS-Local-Transformer** | `MossTTSLocal` | 1.7B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Local-Transformer) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-TTS-Local-Transformer) |
-| **MOSS-TTSD-v1.0** | `MossTTSDelay` | 8B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTSD-v1.0) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-TTSD-v1.0) |
-| **MOSS-VoiceGenerator** | `MossTTSDelay` | 1.7B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-VoiceGenerator) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-VoiceGenerator) |
-| **MOSS-SoundEffect** | `MossTTSDelay` | 8B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-SoundEffect) |
-| **MOSS-TTS-Realtime** | `MossTTSRealtime` | 1.7B | [![Hugging Face](https://img.shields.io/badge/Huggingface-Model-orange?logo=huggingface)](https://huggingface.co/OpenMOSS-Team/MOSS-TTS-Realtime) | [![ModelScope](https://img.shields.io/badge/ModelScope-Model-7B61FF?logo=modelscope&logoColor=white)](https://modelscope.cn/models/openmoss/MOSS-TTS-Realtime) |
-
-## License
-
-This repository will follow the license specified in the root `LICENSE` file. If you are reading this before that file is published, please treat the repository as **not yet licensed for redistribution**.
-
-## Citation
-
-If you use the MOSS-TTS work in your research or product, please cite:
-
-```bibtex
-@misc{openmoss2026mossttsnano,
-  title={MOSS-TTS-Nano},
-  author={OpenMOSS Team},
-  year={2026},
-  howpublished={GitHub repository},
-  url={https://github.com/OpenMOSS/MOSS-TTS-Nano}
-}
-```
-
-```bibtex
-@misc{gong2026mossttstechnicalreport,
-  title={MOSS-TTS Technical Report},
-  author={Yitian Gong and Botian Jiang and Yiwei Zhao and Yucheng Yuan and Kuangwei Chen and Yaozhou Jiang and Cheng Chang and Dong Hong and Mingshu Chen and Ruixiao Li and Yiyang Zhang and Yang Gao and Hanfu Chen and Ke Chen and Songlin Wang and Xiaogui Yang and Yuqian Zhang and Kexin Huang and ZhengYuan Lin and Kang Yu and Ziqi Chen and Jin Wang and Zhaoye Fei and Qinyuan Cheng and Shimin Li and Xipeng Qiu},
-  year={2026},
-  eprint={2603.18090},
-  archivePrefix={arXiv},
-  primaryClass={cs.SD},
-  url={https://arxiv.org/abs/2603.18090}
-}
-```
-
-```bibtex
-@misc{gong2026mossaudiotokenizerscalingaudiotokenizers,
-  title={MOSS-Audio-Tokenizer: Scaling Audio Tokenizers for Future Audio Foundation Models}, 
-  author={Yitian Gong and Kuangwei Chen and Zhaoye Fei and Xiaogui Yang and Ke Chen and Yang Wang and Kexin Huang and Mingshu Chen and Ruixiao Li and Qingyuan Cheng and Shimin Li and Xipeng Qiu},
-  year={2026},
-  eprint={2602.10934},
-  archivePrefix={arXiv},
-  primaryClass={cs.SD},
-  url={https://arxiv.org/abs/2602.10934}, 
-}
-```
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=OpenMOSS%2FMOSS-TTS-Nano&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTS-Nano&type=date&theme=dark&legend=top-left&sealed_token=XgHJMPv5AYQOlZYJGrt8eGTrFFk5-6zG8LQkzxxuMgQjTUOMZq8FJEKw1MNj97TLpBpvUUZlty2EJ_PINZbXiF80u99JSanEHh7VTx2bjCX31PfjnJmGf_TkejvvBbWbKsPJf5e9ziRw0fwo7_cXQO37hLlzk3iWN68sbrCgCAsmdYmQeEcWPo6dAoXN" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTS-Nano&type=date&legend=top-left&sealed_token=XgHJMPv5AYQOlZYJGrt8eGTrFFk5-6zG8LQkzxxuMgQjTUOMZq8FJEKw1MNj97TLpBpvUUZlty2EJ_PINZbXiF80u99JSanEHh7VTx2bjCX31PfjnJmGf_TkejvvBbWbKsPJf5e9ziRw0fwo7_cXQO37hLlzk3iWN68sbrCgCAsmdYmQeEcWPo6dAoXN" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=OpenMOSS/MOSS-TTS-Nano&type=date&legend=top-left&sealed_token=XgHJMPv5AYQOlZYJGrt8eGTrFFk5-6zG8LQkzxxuMgQjTUOMZq8FJEKw1MNj97TLpBpvUUZlty2EJ_PINZbXiF80u99JSanEHh7VTx2bjCX31PfjnJmGf_TkejvvBbWbKsPJf5e9ziRw0fwo7_cXQO37hLlzk3iWN68sbrCgCAsmdYmQeEcWPo6dAoXN" />
- </picture>
-</a>
+几点说明：
+
+- 缓存目录里只要**有**模型（哪怕 snapshots 目录不完整，远程代码在 transformers 的 `modules/` 缓存里也算），
+  启动时就会自动打开 `HF_HUB_OFFLINE=1`，`/health` 的 `huggingface.offline` 字段可以看到；
+  想强制关闭这个行为用 `-e TTS_HF_OFFLINE=0`。
+- 缓存完全是空的、且容器没有外网时，`/health` 会给出明确的失败原因和三种修法（见下）。
+- 想主动补全缓存（例如在能联网的机器上先下载好）：
+
+  ```bash
+  HF_ENDPOINT=https://hf-mirror.com python tools/download_models.py   # 会写进 $HF_HOME（默认 ~/.cache/huggingface）
+  ```
+
+  注意用 `from_pretrained(repo_id)` 跑出来的缓存可能只有 config.json 和权重；
+  本服务在检测到快照不完整时会退回用 repo id + 离线模式加载（远程代码走 `modules/` 缓存）。
+
+**第一次请求很慢？**
+预热在后台进行（加载权重 + 预热合成），完成后 `/health` 的 `ready` 为 `true`。
+预热期间的请求会等待而不是报错；也可以把 `HEALTHCHECK` 接入编排系统，等健康后再接流量。
+
+**网页里「生成并播放」要先等两三秒才出声，是卡住了吗？**
+不是。CPU 单机生成速度大约 1.3× 实时（**比播放慢**），边生成边播必然出现断断续续的声音，
+所以网页默认走「连贯优先」：先缓冲 `(生成倍率-1)/生成倍率 × 音频时长` 秒再开播
+（本机约 1.5~2 秒音频、首音延迟 3 秒左右，全程连贯，统计栏会显示「预缓冲」）。
+想要更低延迟就把「播放模式」切成「低延迟」，代价是生成跟不上时会有空档；
+长文本建议用「下载音频」按整段合成再播放。同一段音频的音质不受模式影响。
+4 核 CPU 上实测：2 线程 RTF 1.57、4 线程 1.30、6 线程 1.47、8 线程 1.92，
+bf16/fp16 反而更慢 —— 也就是说 4 线程已是这台机器的最优点，换更多线程不能解决。
+
+**为什么偶尔会生成出特别长的音频（比如 26 个字生成 29 秒）？**
+两种情况，看长度就能分辨：
+
+1. 文本其实比想象的长：中文约 5 字/秒（实测 155 字 → 28.96 秒），长文本本来就长。
+2. 模型这一轮没生成出结束符（`audio_end_token`），一路生成到 `max_new_frames` 的帧上限：
+   默认 375 帧 ÷ 12.5 帧/秒 = **正好 30.00 秒**，听感上像同一句话被反复重复（自回归 TTS 的已知失效模式）。
+   想复现可以传 `max_new_frames=40`，音频会精确截断在 3.200 秒。
+
+服务端会记录每条请求的 `chars / audio / elapsed`，并在音频超过「预期 2 倍 + 3 秒」时打上
+`[疑似未正常结束]` 告警；响应头也会带上 `X-Input-Chars`，异常时追加
+`X-Audio-Warning: audio-longer-than-expected`，网页界面同步给出红字提示。
+**并且服务端会自动换一个随机 seed 重生成一次**（`TTS_AUTO_RETRY_DEGENERATE=1`，
+重试次数用 `TTS_AUTO_RETRY_ATTEMPTS` 调，默认 1 次）——判定条件是任一成立：
+时长 > 「文本预期 2 倍 + 3 秒」、静音占比 > 40%、最长连续静音 > 3 秒。
+两次都异常时返回较短的那条，并在日志里告警；命中重试时响应头会带 `X-Retries`。
+想彻底避免 30 秒循环也可以把 `max_new_frames` 调到 150 左右（≈12 秒上限，代价是超长句会被截断）。
+
+**能只跑 CPU 吗？**
+可以。默认的 `Dockerfile` / `docker-compose.yml` 就是 CPU 版本，整条链路上没有任何 CUDA 依赖；
+需要 GPU 时改用 `Dockerfile.gpu` 并以 `--gpus all` 启动。
+
+**长文本怎么办？**
+服务会按标点自动分段（每段约 75 个文本 token，可用 `voice_clone_max_text_tokens` 调整），
+逐段合成；`max_new_frames` 控制单段音频长度上限。超长文本建议用流式接口，边播边生成。
+
+## 上游同步与许可
+
+- 本仓库作为上游项目的衍生项目按 Apache License 2.0 分发，许可证副本见 [LICENSE](LICENSE)。
+- 运行时代码来自上游 commit `8b7bcc9`（见 `vendor/upstream/UPSTREAM_VERSION`），
+  可用 `tools/sync_upstream.sh ~/github/MOSS-TTS-Nano main` 重新同步。
+- 上游代码与参考音频遵循 Apache License 2.0；模型权重遵循各自许可。详见 [NOTICE.md](NOTICE.md)。

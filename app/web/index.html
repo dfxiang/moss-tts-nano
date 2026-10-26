@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOSS-TTS-Nano · CPU TTS 服务</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%8A%3C/text%3E%3C/svg%3E">
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f5f6f8;
+    --panel: #ffffff;
+    --panel-2: #f4f6f9;
+    --border: #dfe3ea;
+    --text: #1f2430;
+    --muted: #5b6673;
+    --accent: #2563eb;
+    --accent-strong: #1d4ed8;
+    --ok: #16a34a;
+    --warn: #b45309;
+    --err: #dc2626;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(1200px 600px at 20% -10%, #ffffff 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", Roboto, sans-serif;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 28px 20px 64px; }
+  header.top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  header.top h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header.top .sub { color: var(--muted); font-size: 13px; }
+  .badge {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 7px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    padding: 5px 12px; font-size: 12.5px; color: var(--muted); white-space: nowrap;
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 6px rgba(22, 163, 74, .45); }
+  .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+    border-radius: var(--radius); padding: 18px; margin-top: 16px;
+  }
+  .card h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; color: var(--muted); text-transform: none; }
+  textarea {
+    width: 100%; min-height: 132px; resize: vertical; padding: 13px 14px;
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 10px; font: inherit; font-size: 15px; line-height: 1.7;
+  }
+  textarea:focus, input:focus, select:focus { outline: 2px solid rgba(37,99,235,.28); outline-offset: 1px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12.5px; color: var(--muted); }
+  select, input[type=text], input[type=number], input[type=file] {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 9px; padding: 9px 10px; font: inherit; font-size: 14px;
+  }
+  select { min-width: 210px; }
+  input[type=range] { width: 160px; accent-color: var(--accent); }
+  button {
+    background: var(--accent-strong); color: #fff; border: 0; border-radius: 9px;
+    padding: 10px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+  }
+  button:hover:not(:disabled) { background: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.ghost { background: var(--panel); border: 1px solid var(--border); color: var(--text); font-weight: 500; }
+  button.ghost:hover:not(:disabled) { background: var(--panel-2); }
+  button.tiny { padding: 5px 10px; font-size: 12.5px; }
+  .counter { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 12px; }
+  .stats b { color: var(--text); font-weight: 600; }
+  .msg { margin-top: 12px; font-size: 13px; padding: 10px 12px; border-radius: 9px; display: none; }
+  .msg.show { display: block; }
+  .msg.err { background: #fef3f2; border: 1px solid #fda29b; color: #b42318; }
+  .msg.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8; }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13.5px; user-select: none; }
+  summary:hover { color: var(--text); }
+  details .inner { padding: 14px 0 2px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 14px; overflow-x: auto; font-size: 12.5px; line-height: 1.65; margin: 0;
+  }
+  .code-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .tabs { display: flex; gap: 6px; }
+  .tabs button { background: transparent; border: 1px solid var(--border); color: var(--muted); font-weight: 500; padding: 5px 11px; font-size: 12.5px; }
+  .tabs button.active { color: var(--accent-strong); border-color: var(--accent); background: #eff6ff; }
+  .voices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+  .chip {
+    border: 1px solid var(--border); background: var(--panel); color: var(--muted);
+    border-radius: 999px; padding: 5px 12px; font-size: 12.5px; cursor: pointer;
+  }
+  .chip:hover { color: var(--text); border-color: var(--accent); }
+  .chip.active { color: var(--accent-strong); background: #eff6ff; border-color: var(--accent); }
+  .chip .rec { color: var(--warn); }
+  footer { margin-top: 26px; font-size: 12px; color: var(--muted); text-align: center; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>MOSS-TTS-Nano TTS 服务</h1>
+      <div class="sub">CPU 推理 · 兼容 OpenAI <code>/v1/audio/speech</code></div>
+    </div>
+    <span class="badge" id="health"><span class="dot" id="healthDot"></span><span id="healthText">连接中…</span></span>
+  </header>
+
+  <div class="card">
+    <h2>合成文本</h2>
+    <textarea id="text" placeholder="输入要合成的文本，回车换行会被当作停顿处理。">唉你知道吗，今天真的有够热欸，我一出门就觉得整个人快融化了啦。</textarea>
+    <div class="row">
+      <span class="counter"><span id="chars">0</span> / <span id="charsLimit">8192</span> 字</span>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="voice">音色</label>
+        <select id="voice"></select>
+      </div>
+      <button class="ghost tiny" id="fillSample" title="把该音色的示例文本填入输入框">填入示例文本</button>
+      <div class="field">
+        <label for="speed">语速 <span id="speedVal">1.00×</span></label>
+        <input type="range" id="speed" min="0.5" max="2" step="0.05" value="1">
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:16px">
+      <button id="play">▶ 生成并播放</button>
+      <button class="ghost" id="stop" disabled>■ 停止</button>
+      <div class="field">
+        <label for="latencyMode">播放模式</label>
+        <select id="latencyMode" style="min-width:170px">
+          <option value="smooth">连贯优先（先缓冲再播）</option>
+          <option value="fast">低延迟（可能断断续续）</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="downloadFormat">下载格式</label>
+        <select id="downloadFormat" style="min-width:120px">
+          <option value="mp3">MP3</option>
+          <option value="wav">WAV</option>
+          <option value="flac">FLAC</option>
+          <option value="opus">Opus</option>
+          <option value="aac">AAC</option>
+          <option value="pcm">PCM (16bit)</option>
+        </select>
+      </div>
+      <button class="ghost" id="download">下载音频</button>
+    </div>
+
+    <div class="stats" id="stats">
+      <span>首包延迟 <b id="statFirst">–</b></span>
+      <span>已生成音频 <b id="statAudio">–</b></span>
+      <span>预缓冲 <b id="statBuffer">–</b></span>
+      <span>耗时 <b id="statCost">–</b></span>
+      <span>实时率 <b id="statRtf">–</b></span>
+    </div>
+    <div class="msg" id="msg"></div>
+
+    <details>
+      <summary>高级参数（采样、随机种子、长文本帧数）</summary>
+      <div class="inner grid2">
+        <div class="field">
+          <label for="audioTemp">音频温度 audio_temperature（越低越稳定）</label>
+          <input type="number" id="audioTemp" min="0.1" max="2" step="0.05" value="0.8">
+        </div>
+        <div class="field">
+          <label for="audioTopP">audio_top_p</label>
+          <input type="number" id="audioTopP" min="0.1" max="1" step="0.01" value="0.95">
+        </div>
+        <div class="field">
+          <label for="repPenalty">audio_repetition_penalty</label>
+          <input type="number" id="repPenalty" min="1" max="2" step="0.05" value="1.2">
+        </div>
+        <div class="field">
+          <label for="maxFrames">max_new_frames（单段最大音频帧）</label>
+          <input type="number" id="maxFrames" min="64" max="1500" step="1" value="375">
+        </div>
+        <div class="field">
+          <label for="seed">随机种子 seed（留空为随机）</label>
+          <input type="number" id="seed" min="0" step="1" placeholder="随机">
+        </div>
+      </div>
+      <div class="hint">
+        长文本会按标点自动切分逐段合成；max_new_frames 控制每段音频长度上限，调大可以一次读更长的句子。
+      </div>
+    </details>
+
+    <details>
+      <summary>自定义音色（上传参考音频做音色克隆）</summary>
+      <div class="inner">
+        <div class="row" style="margin-top:0">
+          <div class="field">
+            <label for="promptAudio">参考音频（3~30 秒清晰人声，wav/mp3）</label>
+            <input type="file" id="promptAudio" accept="audio/*">
+          </div>
+          <div class="field">
+            <label for="promptText">参考音频的文本（可选）</label>
+            <input type="text" id="promptText" placeholder="可不填">
+          </div>
+          <button id="clonePlay">用自定义音色生成</button>
+        </div>
+        <div class="hint">音色克隆为一次性请求，不会保存在服务端。</div>
+      </div>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>内置音色（点击切换，★ 为推荐音色）</h2>
+    <div class="voices" id="voiceChips"></div>
+    <div class="hint" id="voiceDesc">–</div>
+  </div>
+
+  <div class="card">
+    <div class="code-head">
+      <h2 style="margin:0">调用示例</h2>
+      <button class="ghost tiny" id="copyCode">复制</button>
+      <div class="tabs" style="margin-left:auto">
+        <button data-tab="curl" class="active">cURL</button>
+        <button data-tab="python">OpenAI SDK</button>
+        <button data-tab="stream">流式播放</button>
+      </div>
+    </div>
+    <pre id="codeBox"></pre>
+  </div>
+
+  <footer>
+    基于 <a href="https://github.com/OpenMOSS/MOSS-TTS-Nano" target="_blank" rel="noreferrer">MOSS-TTS-Nano</a>
+    封装 · CPU 推理 · 无需 CUDA
+  </footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {
+  voices: [],
+  defaultVoice: "",
+  maxInputChars: 8192,
+  audioCtx: null,
+  sources: [],
+  blobAudio: null,
+  abort: null,
+  nextTime: 0,
+  scheduledSeconds: 0,
+  playing: false,
+  streaming: false,
+  underruns: 0,
+  lastRtf: 0,      // 上一次实测的「生成耗时 / 音频时长」，>1 表示生成比实时慢
+  lastAudio: 0,    // 上一次生成的音频时长，用于估算本次该预缓冲多少
+  lastText: "",    // lastAudio 对应的文本，换文本时不再沿用
+  prebuffer: 0,    // 本次实际预缓冲的秒数
+  health: null,
+  tab: "curl",
+};
+
+/* ------------------------------------------------------------ 基础请求封装 */
+
+function showMsg(text, kind = "err") {
+  const box = $("msg");
+  box.textContent = text;
+  box.className = "msg show " + kind;
+}
+function clearMsg() { $("msg").className = "msg"; }
+
+async function readError(res) {
+  try {
+    const data = await res.json();
+    if (data && data.error && data.error.message) return data.error.message;
+    return JSON.stringify(data);
+  } catch (e) {
+    return res.status + " " + res.statusText;
+  }
+}
+
+function buildPayload(extra = {}) {
+  const seedRaw = $("seed").value.trim();
+  return Object.assign({
+    model: "moss-tts-nano",
+    input: $("text").value,
+    voice: $("voice").value,
+    speed: parseFloat($("speed").value),
+    audio_temperature: parseFloat($("audioTemp").value),
+    audio_top_p: parseFloat($("audioTopP").value),
+    audio_repetition_penalty: parseFloat($("repPenalty").value),
+    max_new_frames: parseInt($("maxFrames").value, 10),
+    seed: seedRaw === "" ? null : parseInt(seedRaw, 10),
+  }, extra);
+}
+
+/* ---------------------------------------------------------------- 状态面板 */
+
+async function refreshHealth() {
+  try {
+    const res = await fetch("/health", { cache: "no-store" });
+    const data = await res.json();
+    state.health = data;
+    state.maxInputChars = data.max_input_chars || state.maxInputChars;
+    $("charsLimit").textContent = state.maxInputChars;
+    const dot = $("healthDot");
+    const text = $("healthText");
+    if (data.ready) {
+      dot.className = "dot ok";
+      const rtf = data.realtime_factor ? ` · RTF ${data.realtime_factor}` : "";
+      text.textContent = `${data.device} · ${data.cpu_threads} 线程${rtf}`;
+    } else if (data.warmup && data.warmup.state === "failed") {
+      dot.className = "dot err";
+      text.textContent = "预热失败：" + (data.warmup.error || "");
+    } else {
+      dot.className = "dot warn";
+      text.textContent = "预热中…" + (data.warmup ? " " + data.warmup.message : "");
+    }
+  } catch (e) {
+    $("healthDot").className = "dot err";
+    $("healthText").textContent = "服务不可用";
+  }
+}
+
+/* ------------------------------------------------------------------ 音色 UI */
+
+function renderVoices() {
+  const select = $("voice");
+  const chips = $("voiceChips");
+  select.innerHTML = "";
+  chips.innerHTML = "";
+  const groups = { zh: "中文", en: "英文", ja: "日文", custom: "自定义（挂载参考音频）" };
+  const byLang = {};
+  state.voices.forEach((voice) => {
+    (byLang[voice.language] = byLang[voice.language] || []).push(voice);
+  });
+  Object.keys(byLang).forEach((lang) => {
+    const og = document.createElement("optgroup");
+    og.label = groups[lang] || lang;
+    byLang[lang].forEach((voice) => {
+      const option = document.createElement("option");
+      option.value = voice.id;
+      option.textContent = voice.name + (voice.recommended ? " ★" : "");
+      og.appendChild(option);
+    });
+    select.appendChild(og);
+  });
+  state.voices.forEach((voice) => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.dataset.voice = voice.id;
+    chip.innerHTML = voice.name + (voice.recommended ? ' <span class="rec">★</span>' : "");
+    chip.onclick = () => {
+      select.value = voice.id;
+      updateVoiceUI();
+    };
+    chips.appendChild(chip);
+  });
+  select.value = state.defaultVoice;
+  updateVoiceUI();
+}
+
+function currentVoice() {
+  return state.voices.find((v) => v.id === $("voice").value) || state.voices[0];
+}
+
+function updateVoiceUI() {
+  const voice = currentVoice();
+  document.querySelectorAll(".chip").forEach((chip) => {
+    chip.classList.toggle("active", chip.dataset.voice === voice.id);
+  });
+  if (voice) {
+    $("voiceDesc").textContent =
+      `${voice.name}（${voice.id}，${voice.language}）· ${voice.description}` +
+      (voice.aliases.length ? ` · OpenAI 别名：${voice.aliases.join(", ")}` : "");
+  }
+  renderCode();
+}
+
+/* -------------------------------------------------------------- 流式播放器 */
+
+function audioCtx() {
+  if (!state.audioCtx) state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (state.audioCtx.state === "suspended") state.audioCtx.resume();
+  return state.audioCtx;
+}
+
+function stopPlayback() {
+  if (state.abort) { try { state.abort.abort(); } catch (e) {} state.abort = null; }
+  if (state.blobAudio) { try { state.blobAudio.pause(); } catch (e) {} state.blobAudio = null; }
+  state.sources.forEach((src) => { try { src.stop(); } catch (e) {} });
+  state.sources = [];
+  state.playing = false;
+  state.streaming = false;
+  state.scheduledSeconds = 0;
+  state.underruns = 0;
+  setBusy(false);
+}
+
+function setBusy(busy) {
+  $("play").disabled = busy;
+  $("clonePlay").disabled = busy;
+  $("download").disabled = busy;
+  $("stop").disabled = !busy;
+}
+
+function schedulePcm(int16, channels, sampleRate) {
+  const frames = Math.floor(int16.length / channels);
+  if (frames <= 0) return;
+  const ctx = audioCtx();
+  const buffer = ctx.createBuffer(channels, frames, sampleRate);
+  for (let ch = 0; ch < channels; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < frames; i++) data[i] = int16[i * channels + ch] / 32768;
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  const now = ctx.currentTime;
+  if (!state.playing) {
+    state.nextTime = now + 0.08; // 首包缓冲
+    state.playing = true;
+  } else if (state.nextTime < now) {
+    // 生成跟不上播放（RTF > 1）时会走到这里：留下一个空档，记下来供下次加大预缓冲
+    state.underruns += 1;
+    state.nextTime = now + 0.02;
+  }
+  source.start(state.nextTime);
+  state.nextTime += frames / sampleRate;
+  state.scheduledSeconds += frames / sampleRate;
+  state.sources.push(source);
+  source.onended = () => {
+    state.sources = state.sources.filter((item) => item !== source);
+    // 生成还在进行时不结束「正在播放」状态，避免按钮过早恢复可点
+    if (!state.sources.length) {
+      state.playing = false;
+      if (!state.streaming) setBusy(false);
+    }
+  };
+  $("statAudio").textContent = state.scheduledSeconds.toFixed(2) + " s";
+}
+
+/* 生成速度慢于实时（RTF > 1）时，边生成边播必然出现空档。
+   所以开播前先攒一段余量，余量按实测生成速度动态决定（长文本需要更多余量）。 */
+function expectedAudioSeconds(text) {
+  const chars = text.replace(/\s+/g, "").length;
+  // 实测中文约 5~6 字/秒，另外还有一点固定的起止静音
+  return Math.max(0.6, 0.45 + chars / 5.6);
+}
+
+async function playStream() {
+  const text = $("text").value.trim();
+  if (!text) { showMsg("请输入要合成的文本。"); return; }
+  stopPlayback(); // 先中断上一次的流与播放，避免两路音频叠在一起
+  clearMsg();
+  setBusy(true);
+  state.scheduledSeconds = 0;
+  $("statAudio").textContent = "0.00 s";
+  $("statFirst").textContent = "–";
+  $("statBuffer").textContent = "–";
+  $("statRtf").textContent = "–";
+  const startedAt = performance.now();
+  const controller = new AbortController();
+  state.abort = controller;
+  state.streaming = true;
+
+  // 同一段文本优先用上一次的真实音频时长，换文本时退回字数估算
+  const estimate =
+    state.lastText === text && state.lastAudio > 0 ? state.lastAudio : expectedAudioSeconds(text);
+  const held = []; // 开播前先攒住的音频块
+  let heldSeconds = 0;
+  let released = false;
+  const release = () => {
+    for (const item of held) schedulePcm(item[0], item[1], item[2]);
+    held.length = 0;
+    state.prebuffer = heldSeconds;
+    released = true;
+  };
+
+  try {
+    const res = await fetch("/v1/audio/speech/stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload()),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    const sampleRate = parseInt(res.headers.get("X-Sample-Rate") || "48000", 10);
+    const channels = parseInt(res.headers.get("X-Channels") || "1", 10);
+    const reader = res.body.getReader();
+    let leftover = new Uint8Array(0);
+    let firstChunk = true;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (firstChunk) {
+        $("statFirst").textContent = ((performance.now() - startedAt) / 1000).toFixed(2) + " s";
+        firstChunk = false;
+      }
+      const merged = new Uint8Array(leftover.length + value.length);
+      merged.set(leftover, 0);
+      merged.set(value, leftover.length);
+      const frameBytes = 2 * channels;
+      const usable = merged.length - (merged.length % frameBytes);
+      leftover = merged.slice(usable);
+      if (usable > 0) {
+        const pcm = new Int16Array(merged.buffer, 0, usable / 2);
+        if (released) { schedulePcm(pcm, channels, sampleRate); continue; }
+        held.push([pcm, channels, sampleRate]);
+        heldSeconds += (usable / 2) / channels / sampleRate;
+        const elapsed = (performance.now() - startedAt) / 1000;
+        // 余量 = (生成倍率 - 1) × 预计音频时长；倍率先用历史实测，再用本轮交付速度
+        const liveRtf = heldSeconds > 0.25 ? elapsed / heldSeconds : 0;
+        const rtf = Math.max(state.lastRtf || 0, liveRtf, 1);
+        // 保证播完前生成能追上：预缓冲 H ≥ (RTF-1)/RTF × 总时长，再留 0.35s 抖动余量；
+        // 「低延迟」模式不缓冲，接受生成跟不上时的空档。
+        const smooth = $("latencyMode").value !== "fast";
+        const need = smooth ? Math.min(2.5, Math.max(0.4, ((rtf - 1) / rtf) * estimate + 0.35)) : 0.35;
+        if ((heldSeconds >= need && heldSeconds >= 0.4) || elapsed >= 6.0) {
+          $("statBuffer").textContent = heldSeconds.toFixed(2) + " s";
+          release();
+        }
+      }
+    }
+    if (!released && held.length) { // 短文本：流都结束了还没攒够，直接播
+      $("statBuffer").textContent = heldSeconds.toFixed(2) + " s";
+      release();
+    }
+    const cost = (performance.now() - startedAt) / 1000;
+    $("statCost").textContent = cost.toFixed(2) + " s";
+    if (state.scheduledSeconds > 0) {
+      const rtf = cost / state.scheduledSeconds;
+      state.lastRtf = rtf;
+      state.lastText = text;
+      state.lastAudio = state.scheduledSeconds;
+      $("statRtf").textContent = rtf.toFixed(2);
+      const expected = expectedAudioSeconds(text);
+      if (state.scheduledSeconds > expected * 2.0 + 3.0) {
+        // 音频远长于文本预期：多半是模型这一轮没吐出结束符、一路生成到 max_new_frames 上限
+        showMsg(
+          `生成时长异常：${state.scheduledSeconds.toFixed(1)} 秒，而这段文本预计约 ${expected.toFixed(1)} 秒。` +
+            `通常是模型没正常结束（会把一句话重复念下去）。再点一次通常就好；` +
+            `想避免这种情况可以把「max_new_frames」调小（375 帧 ≈ 30 秒上限）。`,
+          "err"
+        );
+      } else if (rtf > 1.05) {
+        const buffered = (state.prebuffer || 0).toFixed(1);
+        showMsg(
+          `本机生成速度约 ${rtf.toFixed(2)}× 实时（CPU 单机算力限制），已预缓冲 ${buffered} 秒。` +
+            (state.underruns
+              ? `仍出现 ${state.underruns} 处卡顿：文本越长越明显，建议用「下载音频」按整段合成，或缩短单次文本。`
+              : `播放已连贯。`),
+          "info"
+        );
+      }
+    }
+    state.streaming = false;
+    if (!state.sources.length) setBusy(false);
+  } catch (err) {
+    state.streaming = false;
+    if (err.name !== "AbortError") {
+      showMsg("合成失败：" + err.message);
+      setBusy(false);
+    }
+  }
+}
+
+async function playBlob(res) {
+  if (!res.ok) throw new Error(await readError(res));
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  state.blobAudio = audio;
+  audio.onended = () => {
+    URL.revokeObjectURL(url);
+    if (state.blobAudio === audio) state.blobAudio = null;
+    setBusy(false);
+  };
+  audio.play();
+  return blob;
+}
+
+async function playWhole(payload, endpoint = "/v1/audio/speech") {
+  stopPlayback();
+  clearMsg();
+  setBusy(true);
+  $("statBuffer").textContent = "整段";
+  const startedAt = performance.now();
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(Object.assign(buildPayload(), payload || {})),
+    });
+    await playBlob(res);
+    const cost = (performance.now() - startedAt) / 1000;
+    $("statCost").textContent = cost.toFixed(2) + " s";
+    const seconds = parseFloat(res.headers.get("X-Audio-Seconds") || "0");
+    if (seconds > 0) {
+      $("statAudio").textContent = seconds.toFixed(2) + " s";
+      $("statRtf").textContent = (cost / seconds).toFixed(2);
+    }
+    $("statFirst").textContent = "一次性返回";
+  } catch (err) {
+    showMsg("合成失败：" + err.message);
+    setBusy(false);
+  }
+}
+
+async function downloadAudio() {
+  const text = $("text").value.trim();
+  if (!text) { showMsg("请输入要合成的文本。"); return; }
+  clearMsg();
+  setBusy(true);
+  const format = $("downloadFormat").value;
+  try {
+    const res = await fetch("/v1/audio/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildPayload({ response_format: format })),
+    });
+    if (!res.ok) throw new Error(await readError(res));
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+    link.href = url;
+    link.download = `moss-tts-${$("voice").value}-${stamp}.${format}`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch (err) {
+    showMsg("下载失败：" + err.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function cloneAndPlay() {
+  const file = $("promptAudio").files[0];
+  const text = $("text").value.trim();
+  if (!file) { showMsg("请先选择参考音频。"); return; }
+  if (!text) { showMsg("请输入要合成的文本。"); return; }
+  stopPlayback();
+  clearMsg();
+  setBusy(true);
+  $("statBuffer").textContent = "整段";
+  const form = new FormData();
+  form.append("input", text);
+  form.append("prompt_audio", file);
+  form.append("prompt_text", $("promptText").value);
+  form.append("speed", $("speed").value);
+  form.append("response_format", "wav");
+  const startedAt = performance.now();
+  try {
+    const res = await fetch("/v1/audio/speech/clone", { method: "POST", body: form });
+    await playBlob(res);
+    $("statCost").textContent = ((performance.now() - startedAt) / 1000).toFixed(2) + " s";
+    $("statFirst").textContent = "一次性返回";
+  } catch (err) {
+    showMsg("音色克隆失败：" + err.message);
+    setBusy(false);
+  }
+}
+
+/* ----------------------------------------------------------------- 代码示例 */
+
+function renderCode() {
+  const base = location.origin;
+  const voice = $("voice").value;
+  const text = ($("text").value.trim() || "你好，欢迎使用 MOSS-TTS-Nano。").slice(0, 40);
+  const payload = {
+    model: "moss-tts-nano",
+    input: text,
+    voice: voice,
+    response_format: $("downloadFormat").value,
+    speed: parseFloat($("speed").value),
+  };
+  const snippets = {
+    curl:
+`curl -X POST ${base}/v1/audio/speech \\
+  -H "Content-Type: application/json" \\
+  -d '${JSON.stringify(payload, null, 2)}' \\
+  --output output.${payload.response_format}`,
+    python:
+`from openai import OpenAI
+
+client = OpenAI(base_url="${base}/v1", api_key="not-needed")
+
+with client.audio.speech.with_streaming_response.create(
+    model="moss-tts-nano",
+    voice="${voice}",
+    input="你好，欢迎使用 MOSS-TTS-Nano。",
+    response_format="mp3",
+) as response:
+    response.stream_to_file("output.mp3")
+
+# 兼容 OpenAI 的音色名（nova / alloy / onyx ...）会自动映射到内置音色`,
+    stream:
+`# 流式：服务端边生成边返回 16bit PCM，浏览器/客户端可以立即播放
+import requests, numpy as np, soundfile as sf, io
+
+resp = requests.post(
+    "${base}/v1/audio/speech/stream",
+    json={"input": "${text}", "voice": "${voice}"},
+    stream=True,
+)
+sample_rate = int(resp.headers["X-Sample-Rate"])
+channels = int(resp.headers["X-Channels"])
+pcm = b"".join(resp.iter_content(chunk_size=8192))
+data = np.frombuffer(pcm, dtype="<i2").astype("float32") / 32768.0
+sf.write("stream.wav", data.reshape(-1, channels), sample_rate)`,
+  };
+  $("codeBox").textContent = snippets[state.tab];
+}
+
+/* --------------------------------------------------------------- 事件绑定 */
+
+$("text").addEventListener("input", () => {
+  $("chars").textContent = $("text").value.length;
+  renderCode();
+});
+$("speed").addEventListener("input", () => {
+  $("speedVal").textContent = parseFloat($("speed").value).toFixed(2) + "×";
+  renderCode();
+});
+$("voice").addEventListener("change", updateVoiceUI);
+$("downloadFormat").addEventListener("change", renderCode);
+$("play").addEventListener("click", playStream);
+$("stop").addEventListener("click", stopPlayback);
+$("download").addEventListener("click", downloadAudio);
+$("clonePlay").addEventListener("click", cloneAndPlay);
+$("fillSample").addEventListener("click", () => {
+  const voice = currentVoice();
+  if (!voice) return;
+  $("text").value = voice.sample_text || $("text").value;
+  $("text").dispatchEvent(new Event("input"));
+});
+$("copyCode").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText($("codeBox").textContent);
+    $("copyCode").textContent = "已复制";
+    setTimeout(() => ($("copyCode").textContent = "复制"), 1500);
+  } catch (e) {
+    showMsg("复制失败，请手动选择代码。");
+  }
+});
+document.querySelectorAll(".tabs button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.tab = btn.dataset.tab;
+    document.querySelectorAll(".tabs button").forEach((item) => item.classList.toggle("active", item === btn));
+    renderCode();
+  });
+});
+
+(async function init() {
+  try {
+    const res = await fetch("/v1/audio/voices", { cache: "no-store" });
+    const data = await res.json();
+    state.voices = data.data || [];
+    state.defaultVoice = data.default_voice || (state.voices[0] && state.voices[0].id);
+    renderVoices();
+  } catch (err) {
+    showMsg("加载音色列表失败：" + err.message);
+  }
+  await refreshHealth();
+  setInterval(refreshHealth, 5000);
+})();
+</script>
+</body>
+</html>

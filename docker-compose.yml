@@ -1,0 +1,38 @@
+services:
+  moss-tts-nano:
+    build:
+      context: .
+      args:
+        # 设为 0 则不在构建时下载权重，运行时通过挂载 HF 缓存提供
+        PRELOAD_MODELS: "1"
+        # 默认走国内镜像站加速权重下载；需要直连官方站可改为 https://huggingface.co
+        HF_ENDPOINT: "https://hf-mirror.com"
+    image: moss-tts-nano:latest
+    container_name: moss-tts-nano
+    ports:
+      # 宿主机端口可用 TTS_PUBLISH_PORT 覆盖，例如 TTS_PUBLISH_PORT=8080 docker compose up -d
+      - "${TTS_PUBLISH_PORT:-8000}:8000"
+    environment:
+      # CPU 推理线程数，默认取容器可用核数
+      TTS_CPU_THREADS: "4"
+      # 默认音色：台湾腔
+      TTS_DEFAULT_VOICE: "zh_taiwan"
+      # 单机 CPU 推理建议串行；调大后并发请求会排队/抢核
+      TTS_MAX_CONCURRENCY: "1"
+      # 需要鉴权时设置，客户端用 Authorization: Bearer <key>
+      # TTS_API_KEY: "sk-moss-tts"
+      # 单次请求文本长度上限
+      TTS_MAX_INPUT_CHARS: "8192"
+      # 挂载参考音频目录（镜像默认值，改路径时同步改下面的 volumes）
+      TTS_VOICE_DIR: "/voices"
+    volumes:
+      # 把宿主机参考音频目录挂进容器（只读，可用 TTS_VOICE_DIR_HOST 覆盖）：
+      # 里面的 abc.mp3 会登记成音色 abc，客户端用 {"voice": "abc"} 即可克隆音色。
+      - "${TTS_VOICE_DIR_HOST:-/home/danny/tts-voices}:/voices:ro"
+    # 限制容器可用 CPU，避免占满整机
+    cpus: "4"
+    restart: unless-stopped
+    # 若镜像未预下载权重，可挂载本机 HuggingFace 缓存：
+    # volumes:
+    #   - ~/.cache/huggingface:/opt/huggingface:ro
+    # 并把 TTS_CHECKPOINT_PATH / TTS_AUDIO_TOKENIZER_PATH 设为对应的模型 repo id

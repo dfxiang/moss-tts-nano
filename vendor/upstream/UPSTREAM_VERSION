@@ -1,0 +1,4 @@
+repo=https://github.com/OpenMOSS/MOSS-TTS-Nano.git
+commit=8b7bcc9341b3b4ef3a3a58ba1338a7d85ff133eb
+commit_date=2026-09-06
+synced_files=moss_tts_nano_runtime.py,onnx_tts_runtime.py,ort_cpu_runtime.py,text_normalization_pipeline.py,tts_robust_normalizer_single_script.py,moss_tts_nano/__init__.py,moss_tts_nano/defaults.py,assets/audio,assets/demo.jsonl

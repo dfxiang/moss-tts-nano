@@ -1,0 +1,80 @@
+# MOSS-TTS-Nano OpenAI 兼容 TTS 服务（CUDA GPU / 基于已构建好的运行环境）
+ARG BASE_IMAGE=moss-tts-nano:base
+FROM ${BASE_IMAGE}
+
+# 基础镜像已经包含 CUDA PyTorch、Python 依赖、ffmpeg 和模型权重。
+# 这里只覆盖应用代码，避免重复安装大型依赖。
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=0 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/ \
+    HF_HOME=/opt/huggingface \
+    HF_HUB_DISABLE_XET=1 \
+    HF_HUB_DOWNLOAD_TIMEOUT=120 \
+    TTS_MODEL_LINK_DIR=/opt/models \
+    TTS_CHECKPOINT_PATH=/opt/models/MOSS-TTS-Nano \
+    TTS_AUDIO_TOKENIZER_PATH=/opt/models/MOSS-Audio-Tokenizer-Nano \
+    TTS_BACKEND=onnx \
+    TTS_ONNX_MODEL_DIR=/opt/onnx_models \
+    TTS_ONNX_EXECUTION_PROVIDER=cuda \
+    TTS_DEVICE=cuda \
+    TTS_DTYPE=float32 \
+    TTS_ATTN_IMPLEMENTATION=eager \
+    TTS_HOST=0.0.0.0 \
+    TTS_PORT=8000 \
+    TTS_VOICE_DIR=/voices \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+WORKDIR /srv
+
+COPY requirements.txt requirements.gpu.txt requirements.onnx.txt ./
+COPY tools/install_python_deps.sh /usr/local/bin/install-python-deps
+RUN sed -i 's/\r$//' /usr/local/bin/install-python-deps
+COPY vendor ./vendor
+COPY tools ./tools
+COPY app ./app
+
+ARG HF_ENDPOINT=https://hf-mirror.com
+
+# ONNX Runtime CUDA 执行提供程序。基础镜像已有则不重复安装。
+RUN --mount=type=bind,source=wheels,target=/wheels \
+    --mount=type=cache,target=/root/.cache/pip,sharing=locked \
+    set -eu; \
+    if python -c "import onnxruntime as ort; assert 'CUDAExecutionProvider' in ort.get_available_providers()" 2>/dev/null; then \
+        echo "base image already provides ONNX Runtime CUDA"; \
+    else \
+        python -m pip uninstall -y onnxruntime onnxruntime-gpu >/dev/null 2>&1 || true; \
+        if ls /wheels/onnxruntime_gpu-*.whl >/dev/null 2>&1; then \
+            python -m pip install --timeout 600 --retries 20 /wheels/onnxruntime_gpu-*.whl; \
+        else \
+            python -m pip install --timeout 600 --retries 20 -r requirements.onnx.txt; \
+        fi; \
+    fi
+
+# ONNX assets are embedded so the container does not download models at startup.
+RUN if [ ! -f /opt/onnx_models/MOSS-TTS-Nano-100M-ONNX/browser_poc_manifest.json ] \
+       || [ ! -f /opt/onnx_models/MOSS-Audio-Tokenizer-Nano-ONNX/codec_browser_onnx_meta.json ]; then \
+        HF_ENDPOINT="$HF_ENDPOINT" TTS_ONNX_MODEL_DIR=/opt/onnx_models \
+            python tools/download_onnx_models.py; \
+    else \
+        echo "base image already contains ONNX models"; \
+    fi
+
+# 基础环境只校验一次；缺依赖时在构建阶段直接报错。
+RUN python -c "\
+import shutil, soundfile, torch, torchaudio, onnxruntime as ort;\
+assert torch.version.cuda, 'moss-tts-nano:base must contain CUDA PyTorch';\
+assert shutil.which('ffmpeg'), 'ffmpeg is missing from moss-tts-nano:base';\
+assert 'CUDAExecutionProvider' in ort.get_available_providers(), 'ONNX CUDA provider is missing';\
+assert __import__('pathlib').Path('/opt/onnx_models/MOSS-TTS-Nano-100M-ONNX/browser_poc_manifest.json').is_file(), 'ONNX TTS model is missing';\
+assert __import__('pathlib').Path('/opt/onnx_models/MOSS-Audio-Tokenizer-Nano-ONNX/codec_browser_onnx_meta.json').is_file(), 'ONNX codec is missing';\
+print('base ready:', torch.__version__, torch.version.cuda, torchaudio.__version__, ort.get_available_providers())"
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=240s --retries=3 \
+    CMD python -c "import json, urllib.request; data = json.load(urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)); raise SystemExit(0 if data.get('ready') else 1)"
+
+CMD ["python", "-m", "app.main"]

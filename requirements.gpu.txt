@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# GPU 镜像使用的静态 ffmpeg（python:3.12-slim 没有 ffmpeg 可执行文件）
+imageio-ffmpeg==0.6.0

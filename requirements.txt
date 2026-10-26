@@ -1,11 +1,24 @@
-numpy>=1.24
-fastapi>=0.110.0
+# 运行依赖（PyPI）
+#
+# 注意：torch / torchaudio 不在这里安装，避免 pip 从 PyPI 拉错 CUDA 版本。
+# Dockerfile 会从 CPU-only 索引安装：
+#   pip install --index-url https://download.pytorch.org/whl/cpu torch==2.7.0 torchaudio==2.7.0
+# Dockerfile.gpu 会独立安装 torch / torchaudio 2.7.0 CUDA 12.6 版。
+
+# Web 服务
+fastapi>=0.110,<1.0
+uvicorn>=0.29,<1.0
 python-multipart>=0.0.9
-sentencepiece>=0.1.99
-torch==2.7.0
-torchaudio==2.7.0
+
+# 音频与数值
+numpy>=1.24
+soundfile>=0.12.1
+
+# 模型推理
 transformers==4.57.1
-uvicorn>=0.29.0
-WeTextProcessing>=1.0.4.1
-soundfile
-onnxruntime>=1.20.0
+sentencepiece>=0.1.99
+huggingface_hub>=0.34,<1.0
+
+# 文本正则化（中文/英文数字、日期、单位等读法）
+WeTextProcessing==1.2.0
+pynini==2.1.7

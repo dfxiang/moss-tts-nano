@@ -1,0 +1,11 @@
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+.venv
+venv
+generated_audio
+*.log
+.cache
+/README.md
+/tests
