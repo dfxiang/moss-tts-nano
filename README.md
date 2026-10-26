@@ -470,3 +470,7 @@ bf16/fp16 反而更慢 —— 也就是说 4 线程已是这台机器的最优�
 - 运行时代码来自上游 commit `8b7bcc9`（见 `vendor/upstream/UPSTREAM_VERSION`），
   可用 `tools/sync_upstream.sh ~/github/MOSS-TTS-Nano main` 重新同步。
 - 上游代码与参考音频遵循 Apache License 2.0；模型权重遵循各自许可。详见 [NOTICE.md](NOTICE.md)。
+
+## 关联项目文档
+
+- [med-sales 医药销售管理系统文档（含 Android APK 与演示视频）](docs/med-sales/README.md)
